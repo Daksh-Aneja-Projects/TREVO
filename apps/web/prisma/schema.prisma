@@ -1,0 +1,687 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+enum UserRole {
+  BUILDER
+  VALIDATOR
+  COUNCIL
+}
+
+enum UserTier {
+  SEED
+  PROVEN
+  TRUSTED
+  SOVEREIGN
+}
+
+enum AgentStatus {
+  ACTIVE
+  DEPRECATED
+  FLAGGED
+}
+
+enum ProofType {
+  SUCCESS
+  FAILURE
+  PARTIAL
+}
+
+enum ValidationStatus {
+  PENDING
+  VALIDATED
+  DISPUTED
+  REJECTED
+}
+
+enum ValidationVerdict {
+  APPROVE
+  REJECT
+  DISPUTE
+}
+
+enum CommonType {
+  KNOWLEDGE
+  PATTERN
+  FAILURE_LESSON
+  STANDARD
+}
+
+enum ProblemDifficulty {
+  SEED
+  ESTABLISHED
+  EXPERT
+}
+
+enum ProblemStatus {
+  OPEN
+  ACTIVE
+  VALIDATING
+  RESOLVED
+  DISPUTED
+}
+
+enum TrustEventType {
+  VALIDATION
+  DISPUTE
+  ENDORSEMENT
+  FLAG
+}
+
+enum GovernanceType {
+  STANDARD
+  INTEROP
+  GUARDRAIL
+  VERTICAL
+}
+
+enum GovernanceStatus {
+  ACTIVE
+  PASSED
+  REJECTED
+  WITHDRAWN
+}
+
+enum BallotChoice {
+  YES
+  NO
+  ABSTAIN
+}
+
+enum ListingStatus {
+  DRAFT
+  PENDING_AUTO
+  NEEDS_FIXES
+  PENDING_COMMUNITY
+  PENDING_COUNCIL
+  VERIFIED
+  REJECTED
+  CHANGES_REQUESTED
+  ARCHIVED
+}
+
+enum ListingAssetType {
+  LOGO
+  SCREENSHOT
+  DEMO_VIDEO
+  DOCUMENT
+}
+
+enum EnquiryStatus {
+  OPEN
+  READ
+  REPLIED
+  ARCHIVED
+  CLOSED
+}
+
+enum BookingStatus {
+  PENDING
+  ACCEPTED
+  DECLINED
+  CANCELLED
+  COMPLETED
+}
+
+enum NotificationType {
+  ENQUIRY_RECEIVED
+  ENQUIRY_REPLIED
+  BOOKING_REQUEST
+  BOOKING_ACCEPTED
+  BOOKING_DECLINED
+  PROOF_VALIDATED
+  PROOF_DISPUTED
+  REPUTATION_CHANGE
+  VOTE_OPENED
+  MENTION
+  LISTING_VERIFIED
+  LISTING_REJECTED
+  LISTING_CHANGES_REQUESTED
+  COMMUNITY_REVIEW_NEEDED
+  COUNCIL_REVIEW_NEEDED
+}
+
+enum NewsCategory {
+  INDUSTRY
+  RESEARCH
+  PRODUCT
+  POLICY
+  COMMUNITY
+  TREND_PULSE
+  EDITORS_PICK
+}
+
+enum NewsSentiment {
+  POSITIVE
+  NEUTRAL
+  CAUTIONARY
+}
+
+model User {
+  id                String   @id @default(cuid())
+  email             String   @unique
+  username          String   @unique
+  displayName       String?
+  passwordHash      String?
+  role              UserRole @default(BUILDER)
+  tier              UserTier @default(SEED)
+  trustScore        Float    @default(0)
+  reputationPoints  Int      @default(0)
+  domainVerticals   String[]
+  verified          Boolean  @default(false)
+  githubId          String?  @unique
+  avatar            String?
+  bio               String?
+  website           String?
+  notificationPrefs Json?
+  createdAt         DateTime @default(now())
+  updatedAt         DateTime @updatedAt
+
+  agents            AgentProfile[]
+  proofs            ProofEntry[]         @relation("BuilderProofs")
+  validations       ProofValidation[]
+  commonEntries     CommonEntry[]        @relation("AuthorEntries")
+  postedProblems    Problem[]            @relation("PosterProblems")
+  assignedProblems  Problem[]            @relation("AssignedProblems")
+  trustEventsActor  TrustEvent[]         @relation("ActorEvents")
+  trustEventsTarget TrustEvent[]         @relation("TargetEvents")
+  reputationLogs    ReputationLog[]
+  proposedVotes     GovernanceVote[]
+  ballots           GovernanceBallot[]
+  sessions          Session[]
+  accounts          Account[]
+  apiKeys           ApiKey[]
+  listings          AgentListing[]
+  sentEnquiries     Enquiry[]            @relation("SentEnquiries")
+  receivedEnquiries Enquiry[]            @relation("ReceivedEnquiries")
+  enquiryMessages   EnquiryMessage[]
+  sentBookings      BookingRequest[]     @relation("SentBookings")
+  receivedBookings  BookingRequest[]     @relation("ReceivedBookings")
+  notifications     Notification[]
+
+  @@index([tier])
+  @@index([trustScore])
+  @@index([createdAt])
+}
+
+model Account {
+  id                    String    @id @default(cuid())
+  userId                String
+  accountId             String
+  providerId            String
+  accessToken           String?
+  refreshToken          String?
+  accessTokenExpiresAt  DateTime?
+  refreshTokenExpiresAt DateTime?
+  scope                 String?
+  idToken               String?
+  password              String?
+  createdAt             DateTime  @default(now())
+  updatedAt             DateTime  @updatedAt
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId])
+}
+
+model Session {
+  id        String   @id @default(cuid())
+  userId    String
+  token     String   @unique
+  expiresAt DateTime
+  ipAddress String?
+  userAgent String?
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId])
+  @@index([token])
+}
+
+model Verification {
+  id         String   @id @default(cuid())
+  identifier String
+  value      String
+  expiresAt  DateTime
+  createdAt  DateTime @default(now())
+  updatedAt  DateTime @updatedAt
+
+  @@index([identifier])
+}
+
+model ApiKey {
+  id         String    @id @default(cuid())
+  userId     String
+  agentId    String?
+  keyHash    String    @unique
+  keyPrefix  String
+  name       String
+  revoked    Boolean   @default(false)
+  lastUsedAt DateTime?
+  expiresAt  DateTime?
+  createdAt  DateTime  @default(now())
+
+  user  User          @relation(fields: [userId], references: [id], onDelete: Cascade)
+  agent AgentProfile? @relation(fields: [agentId], references: [id])
+
+  @@index([userId])
+  @@index([keyHash])
+  @@index([keyPrefix])
+}
+
+model AgentProfile {
+  id           String      @id @default(cuid())
+  ownerId      String
+  name         String
+  slug         String      @unique
+  description  String
+  capabilities Json
+  ioContract   Json
+  version      Int         @default(1)
+  forkOfId     String?
+  trustScore   Float       @default(0)
+  totalProofs  Int         @default(0)
+  successRate  Float       @default(0)
+  status       AgentStatus @default(ACTIVE)
+  createdAt    DateTime    @default(now())
+  updatedAt    DateTime    @updatedAt
+
+  owner         User            @relation(fields: [ownerId], references: [id])
+  forkOf        AgentProfile?   @relation("AgentForks", fields: [forkOfId], references: [id])
+  forks         AgentProfile[]  @relation("AgentForks")
+  proofs        ProofEntry[]
+  problems      Problem[]       @relation("AgentProblems")
+  contexts      AgentContext[]
+  commonEntries CommonEntry[]   @relation("AgentEntries")
+  apiKeys       ApiKey[]
+  listing       AgentListing?   @relation("LinkedListing")
+
+  @@index([ownerId])
+  @@index([slug])
+  @@index([status])
+  @@index([trustScore])
+}
+
+model AgentListing {
+  id                      String        @id @default(cuid())
+  ownerId                 String
+  name                    String
+  slug                    String        @unique
+  tagline                 String
+  description             String
+  useCases                Json
+  specs                   Json?
+  capabilities            String[]
+  integrations            String[]
+  domainVerticals         String[]
+  contactEmail            String
+  websiteUrl              String?
+  demoUrl                 String?
+  repoUrl                 String?
+  mediaAssets             Json?
+  listingStatus           ListingStatus @default(DRAFT)
+  autoVerificationReport  Json?
+  communityConsensusScore Float?
+  verificationNote        String?
+  verifiedAt              DateTime?
+  agentProfileId          String?       @unique
+  featured                Boolean       @default(false)
+  viewCount               Int           @default(0)
+  enquiryCount            Int           @default(0)
+  communityVerifyOpenedAt DateTime?
+  councilEscalatedAt      DateTime?
+  createdAt               DateTime      @default(now())
+  updatedAt               DateTime      @updatedAt
+
+  owner        User              @relation(fields: [ownerId], references: [id])
+  agentProfile AgentProfile?     @relation("LinkedListing", fields: [agentProfileId], references: [id])
+  assets       AgentListingAsset[]
+  enquiries    Enquiry[]
+  bookings     BookingRequest[]
+
+  @@index([ownerId])
+  @@index([slug])
+  @@index([listingStatus])
+  @@index([featured])
+  @@index([viewCount])
+  @@index([createdAt])
+  @@index([domainVerticals])
+}
+
+model AgentListingAsset {
+  id        String           @id @default(cuid())
+  listingId String
+  type      ListingAssetType
+  url       String
+  order     Int              @default(0)
+  createdAt DateTime         @default(now())
+
+  listing AgentListing @relation(fields: [listingId], references: [id], onDelete: Cascade)
+
+  @@index([listingId])
+}
+
+model Enquiry {
+  id          String        @id @default(cuid())
+  senderId    String
+  recipientId String
+  listingId   String?
+  subject     String
+  status      EnquiryStatus @default(OPEN)
+  createdAt   DateTime      @default(now())
+  updatedAt   DateTime      @updatedAt
+
+  sender    User             @relation("SentEnquiries", fields: [senderId], references: [id])
+  recipient User             @relation("ReceivedEnquiries", fields: [recipientId], references: [id])
+  listing   AgentListing?    @relation(fields: [listingId], references: [id])
+  messages  EnquiryMessage[]
+
+  @@index([senderId])
+  @@index([recipientId])
+  @@index([listingId])
+  @@index([status])
+  @@index([createdAt])
+}
+
+model EnquiryMessage {
+  id        String    @id @default(cuid())
+  enquiryId String
+  authorId  String
+  body      String
+  readAt    DateTime?
+  createdAt DateTime  @default(now())
+
+  enquiry Enquiry @relation(fields: [enquiryId], references: [id], onDelete: Cascade)
+  author  User    @relation(fields: [authorId], references: [id])
+
+  @@index([enquiryId])
+  @@index([authorId])
+  @@index([createdAt])
+}
+
+model BookingRequest {
+  id            String        @id @default(cuid())
+  requesterId   String
+  builderId     String
+  listingId     String?
+  purpose       String
+  preferredDate DateTime
+  preferredTime String
+  timezone      String        @default("UTC")
+  notes         String?
+  status        BookingStatus @default(PENDING)
+  builderNote   String?
+  respondedAt   DateTime?
+  scheduledAt   DateTime?
+  createdAt     DateTime      @default(now())
+
+  requester User          @relation("SentBookings", fields: [requesterId], references: [id])
+  builder   User          @relation("ReceivedBookings", fields: [builderId], references: [id])
+  listing   AgentListing? @relation(fields: [listingId], references: [id])
+
+  @@index([requesterId])
+  @@index([builderId])
+  @@index([listingId])
+  @@index([status])
+  @@index([createdAt])
+}
+
+model Notification {
+  id        String           @id @default(cuid())
+  userId    String
+  type      NotificationType
+  title     String
+  body      String
+  linkUrl   String?
+  read      Boolean          @default(false)
+  createdAt DateTime         @default(now())
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId])
+  @@index([userId, read])
+  @@index([createdAt])
+}
+
+model NewsArticle {
+  id          String        @id @default(cuid())
+  externalId  String        @unique
+  title       String
+  summary     String
+  url         String
+  source      String
+  publishedAt DateTime
+  imageUrl    String?
+  category    NewsCategory  @default(INDUSTRY)
+  sentiment   NewsSentiment @default(NEUTRAL)
+  insightTags String[]
+  featured    Boolean       @default(false)
+  fetchedAt   DateTime      @default(now())
+
+  @@index([category])
+  @@index([publishedAt])
+  @@index([featured])
+  @@index([fetchedAt])
+}
+
+model AIStatSnapshot {
+  id         String   @id @default(cuid())
+  metric     String
+  value      Float
+  unit       String
+  source     String
+  sourceUrl  String?
+  label      String
+  delta      Float?
+  deltaPercent Float?
+  trend30d   Float[]
+  keyInsight String?
+  confidence Float    @default(1)
+  recordedAt DateTime @default(now())
+
+  @@index([metric])
+  @@index([recordedAt])
+  @@unique([metric, recordedAt])
+}
+
+model ProofEntry {
+  id               String           @id @default(cuid())
+  agentId          String?
+  builderId        String?
+  problemId        String?          @unique
+  type             ProofType
+  title            String
+  summary          String
+  methodology      Json
+  outcome          Json
+  evidence         Json
+  domainVertical   String
+  validationStatus ValidationStatus @default(PENDING)
+  validationCount  Int              @default(0)
+  trustWeight      Float            @default(1)
+  createdAt        DateTime         @default(now())
+  archivedAt       DateTime?
+
+  agent       AgentProfile?     @relation(fields: [agentId], references: [id])
+  builder     User?             @relation("BuilderProofs", fields: [builderId], references: [id])
+  problem     Problem?          @relation(fields: [problemId], references: [id])
+  validations ProofValidation[]
+
+  @@index([agentId])
+  @@index([builderId])
+  @@index([validationStatus])
+  @@index([domainVertical])
+  @@index([createdAt])
+  @@index([type])
+}
+
+model ProofValidation {
+  id               String            @id @default(cuid())
+  proofId          String
+  validatorId      String
+  verdict          ValidationVerdict
+  reasoning        String
+  confidence       Float
+  reputationStaked Int               @default(0)
+  createdAt        DateTime          @default(now())
+
+  proof     ProofEntry @relation(fields: [proofId], references: [id])
+  validator User       @relation(fields: [validatorId], references: [id])
+
+  @@index([proofId])
+  @@index([validatorId])
+  @@index([createdAt])
+}
+
+model CommonEntry {
+  id             String     @id @default(cuid())
+  authorId       String?
+  agentId        String?
+  title          String
+  content        String
+  domainVertical String
+  type           CommonType
+  citations      String[]
+  endorsements   Int        @default(0)
+  qualityScore   Float      @default(0)
+  version        Int        @default(1)
+  supersedesId   String?
+  createdAt      DateTime   @default(now())
+  updatedAt      DateTime   @updatedAt
+
+  author       User?         @relation("AuthorEntries", fields: [authorId], references: [id])
+  agent        AgentProfile? @relation("AgentEntries", fields: [agentId], references: [id])
+  supersedes   CommonEntry?  @relation("EntrySupersedes", fields: [supersedesId], references: [id])
+  supersededBy CommonEntry[] @relation("EntrySupersedes")
+
+  @@index([authorId])
+  @@index([domainVertical])
+  @@index([type])
+  @@index([qualityScore])
+}
+
+model Problem {
+  id               String            @id @default(cuid())
+  posterId         String
+  title            String
+  description      String
+  domainVertical   String
+  difficulty       ProblemDifficulty
+  status           ProblemStatus     @default(OPEN)
+  reputationReward Int
+  monetaryReward   Float?
+  requiredTier     UserTier          @default(SEED)
+  deadline         DateTime?
+  assignedToId     String?
+  assignedAgentId  String?
+  claimedAt        DateTime?
+  createdAt        DateTime          @default(now())
+  updatedAt        DateTime          @updatedAt
+
+  poster        User          @relation("PosterProblems", fields: [posterId], references: [id])
+  assignedTo    User?         @relation("AssignedProblems", fields: [assignedToId], references: [id])
+  assignedAgent AgentProfile? @relation("AgentProblems", fields: [assignedAgentId], references: [id])
+  proof         ProofEntry?
+
+  @@index([posterId])
+  @@index([status])
+  @@index([domainVertical])
+  @@index([difficulty])
+  @@index([assignedToId])
+}
+
+model TrustEvent {
+  id           String         @id @default(cuid())
+  actorId      String
+  targetId     String?
+  type         TrustEventType
+  weight       Float          @default(1)
+  anomalyScore Float          @default(0)
+  reviewed     Boolean        @default(false)
+  metadata     Json?
+  createdAt    DateTime       @default(now())
+
+  actor  User  @relation("ActorEvents", fields: [actorId], references: [id])
+  target User? @relation("TargetEvents", fields: [targetId], references: [id])
+
+  @@index([actorId])
+  @@index([targetId])
+  @@index([type])
+  @@index([anomalyScore])
+  @@index([createdAt])
+}
+
+model ReputationLog {
+  id        String   @id @default(cuid())
+  userId    String
+  delta     Int
+  reason    String
+  proofId   String?
+  problemId String?
+  snapshot  Float
+  createdAt DateTime @default(now())
+
+  user User @relation(fields: [userId], references: [id])
+
+  @@index([userId])
+  @@index([createdAt])
+}
+
+model GovernanceVote {
+  id          String           @id @default(cuid())
+  proposerId  String
+  title       String
+  description String
+  type        GovernanceType
+  status      GovernanceStatus @default(ACTIVE)
+  threshold   Float            @default(0.5)
+  endsAt      DateTime
+  createdAt   DateTime         @default(now())
+
+  proposer User               @relation(fields: [proposerId], references: [id])
+  ballots  GovernanceBallot[]
+
+  @@index([proposerId])
+  @@index([status])
+  @@index([endsAt])
+}
+
+model GovernanceBallot {
+  id        String       @id @default(cuid())
+  voteId    String
+  voterId   String
+  choice    BallotChoice
+  weight    Float        @default(1)
+  reasoning String?
+  createdAt DateTime     @default(now())
+
+  vote  GovernanceVote @relation(fields: [voteId], references: [id])
+  voter User           @relation(fields: [voterId], references: [id])
+
+  @@unique([voteId, voterId])
+  @@index([voteId])
+  @@index([voterId])
+}
+
+model AgentContext {
+  id          String   @id @default(cuid())
+  agentId     String
+  sessionKey  String
+  contextBlob Json
+  ttl         Int      @default(2592000)
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  agent AgentProfile @relation(fields: [agentId], references: [id])
+
+  @@unique([agentId, sessionKey])
+  @@index([agentId])
+  @@index([updatedAt])
+}
